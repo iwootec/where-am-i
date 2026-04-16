@@ -63,6 +63,23 @@ const run = async () => {
 
     const toPx = solveAffine(cal.landmarks);
 
+    const lats = cal.landmarks.map(l => l.lat);
+    const lngs = cal.landmarks.map(l => l.lng);
+    const padLat = (Math.max(...lats) - Math.min(...lats)) * 0.5 + 0.002;
+    const padLng = (Math.max(...lngs) - Math.min(...lngs)) * 0.5 + 0.002;
+    const bounds = {
+        minLat: Math.min(...lats) - padLat, maxLat: Math.max(...lats) + padLat,
+        minLng: Math.min(...lngs) - padLng, maxLng: Math.max(...lngs) + padLng
+    };
+    const haversine = (a, b, c, d) => {
+        const R = 6371000, toRad = x => x * Math.PI / 180;
+        const dLat = toRad(c - a), dLng = toRad(d - b);
+        const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dLng/2)**2;
+        return 2 * R * Math.asin(Math.sqrt(s));
+    };
+    const centerLat = (Math.max(...lats) + Math.min(...lats)) / 2;
+    const centerLng = (Math.max(...lngs) + Math.min(...lngs)) / 2;
+
     for (const l of cal.landmarks) {
         const el = document.createElement("div");
         el.className = "landmark";
@@ -84,10 +101,19 @@ const run = async () => {
     navigator.geolocation.watchPosition(
         pos => {
             const { latitude, longitude, accuracy } = pos.coords;
+            const inBounds =
+                latitude  >= bounds.minLat && latitude  <= bounds.maxLat &&
+                longitude >= bounds.minLng && longitude <= bounds.maxLng;
+            if (!inBounds) {
+                me.style.display = "none";
+                const distKm = (haversine(latitude, longitude, centerLat, centerLng) / 1000).toFixed(1);
+                setStatus(`지도 범위 밖입니다 (지도 중심에서 약 ${distKm}km, GPS ±${Math.round(accuracy)}m)`);
+                return;
+            }
             const [px, py] = toPx(latitude, longitude);
             placeAt(me, px, py);
             me.style.display = "block";
-            setStatus(`내 위치: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${Math.round(accuracy)}m)`);
+            setStatus(`내 위치: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (GPS ±${Math.round(accuracy)}m)`);
         },
         err => setStatus(`위치 오류: ${err.message}`),
         { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
